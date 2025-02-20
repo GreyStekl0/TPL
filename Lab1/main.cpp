@@ -12,24 +12,25 @@ enum State
     IN_CHAR
 };
 
-int main()
+int main(int argc, char* argv[])
 {
-    const char* fileName = "lab01.example.utf8.c";
-    const char* tempFileName = "temp_output.c";
+    if (argc != 3)
+    {
+        std::cerr << "Usage: " << argv[0] << " <input file> <output file>" << std::endl;
+        return 1;
+    }
+
+    const char* fileName = argv[1];
+    const char* outFileName = argv[2];
 
     std::ifstream in(fileName);
     if (!in)
     {
-        std::cerr << "Не удалось открыть input.txt" << std::endl;
+        std::cerr << "Не удалось открыть " << argv[1] << std::endl;
         return 1;
     }
 
-    std::ofstream out(tempFileName);
-    if (!out)
-    {
-        std::cerr << "Не удалось открыть output.txt для записи" << std::endl;
-        return 1;
-    }
+    std::ofstream out(outFileName);
 
     State state = NORMAL;
     char c;
@@ -140,7 +141,5 @@ int main()
 
     in.close();
     out.close();
-
-    std::rename(tempFileName, fileName);
     return 0;
 }
