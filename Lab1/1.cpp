@@ -8,7 +8,7 @@ enum State {
     STAR_IN_COMMENT
 };
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <input file> <output file>" << std::endl;
         return 1;
@@ -40,6 +40,8 @@ int main(int argc, char* argv[]) {
             case SLASH:
                 if (c == '*') {
                     state = MULTI_COMMENT;
+                } else if (c == '/') {
+                    out.put('/');
                 } else {
                     out.put('/');
                     out.put(c);
