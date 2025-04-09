@@ -1,10 +1,9 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <vector>
-#include <cctype> // For isdigit, isxdigit, tolower
+#include <cctype>    // Для isdigit, isxdigit, tolower, isalpha, isalnum, isspace
 
-// Enum defining the states of the Finite State Machine
+// Состояния внешнего автомата (комментарии, строки)
 enum State
 {
     NORMAL,
@@ -15,497 +14,409 @@ enum State
     IN_STRING,
     IN_CHAR,
     SLASH_IN_STRING,
-    SLASH_IN_CHAR,
-
-    // --- States for Number Recognition ---
-    ZERO_START, // Started with '0'
-    OCTAL, // Parsing an octal number (after '0')
-    HEX_START, // Seen '0x' or '0X'
-    HEX, // Parsing a hexadecimal number
-    DECIMAL_INTEGER, // Parsing a decimal integer (started with 1-9)
-    AFTER_DOT, // Seen a '.' (potentially start of float or part of ..)
-    FRACTION, // Parsing fractional part (after '.')
-    EXPONENT_START, // Seen 'e' or 'E'
-    EXPONENT_SIGN, // Seen 'e' or 'E' followed by '+' or '-'
-    EXPONENT, // Parsing exponent digits
-    // SUFFIX state might be needed for full compliance, but adds complexity
-    INVALID_NUMBER // Encountered an invalid sequence during number parsing
+    SLASH_IN_CHAR
 };
 
-// Helper to check for octal digits
-bool isoctdigit(char c)
+// Состояния внутреннего автомата для распознавания чисел
+enum NumberState
 {
-    return c >= '0' && c <= '7';
-}
+    IDLE,             // Начальное состояние (не число)
+    START_ZERO,       // Встретили '0'
+    OCTAL,            // Внутри восьмеричного числа (после '0')
+    DECIMAL,          // Внутри десятичного числа
+    HEX_START,        // Встретили '0x' или '0X'
+    HEX,              // Внутри шестнадцатеричного числа
+    NUMBER_END_POTENTIAL_SUFFIX, // Числовая часть закончилась, след. символ - буква
+    SUFFIX_U,         // Встретили 'u' в суффиксе
+    SUFFIX_L,         // Встретили 'l' в суффиксе
+    SUFFIX_LL,        // Встретили 'll' в суффиксе
+    SUFFIX_UL,        // Встретили 'ul' или 'lu'
+    SUFFIX_ULL,       // Встретили 'ull' или 'llu'
+    INVALID           // Недопустимая последовательность
+};
 
-// Function to determine and print the number type
-// Returns true if the sequence was potentially valid (even if ending in suffix), false if clearly invalid.
-// IMPORTANT: Adds a space after the output token.
-bool process_number(const std::string& num_str, State current_fsm_state, std::ofstream& out)
+// Функция для определения типа константы по суффиксам
+// (l_count: 0 для нет 'l', 1 для 'l', 2 для 'll')
+std::string get_int_type(bool has_u, int l_count)
 {
-    if (num_str.empty()) return true;
-
-    // Determine context based on the state the FSM is IN when this is called
-    // This helps distinguish things like "0" (decimal int) vs intermediate states
-    State effective_end_state = current_fsm_state;
-    if (current_fsm_state == INVALID_NUMBER)
+    if (has_u)
     {
-        out << "ERROR(" << num_str << ") ";
-        return false;
-    }
-
-
-    // --- Type Determination Logic ---
-    bool is_float = false;
-    bool is_hex = false;
-    bool is_octal = false;
-    // Suffix flags would be set here in a more complex suffix parser
-    // bool suffix_u = false;
-    // int  suffix_l = 0;
-    // bool suffix_f = false;
-
-    // Check content for float indicators
-    for (char c : num_str)
-    {
-        if (c == '.' || c == 'e' || c == 'E')
-        {
-            is_float = true;
-            break;
-        }
-    }
-
-    // Check for hex/octal prefix (simplified)
-    if (num_str.length() > 1 && num_str[0] == '0')
-    {
-        if (std::tolower(num_str[1]) == 'x')
-        {
-            is_hex = true;
-            is_float = false; // Hex cannot be float directly (0x1.2p1 is C99 hex float, not handled)
-        }
-        else if (isdigit(num_str[1]) && !is_float)
-        {
-            // Octal if not already float
-            is_octal = true;
-            for (size_t i = 1; i < num_str.length(); ++i)
-            {
-                if (!isoctdigit(num_str[i]))
-                {
-                    // Check for invalid octal digits like 8 or 9
-                    out << "ERROR(" << num_str << ") ";
-                    return false;
-                }
-            }
-        }
-        // Otherwise, it might be a float starting 0. or 0e...
-    }
-
-    // --- Output based on type ---
-    // This is simplified; real C++ has complex rules for default types and suffixes.
-    if (is_float)
-    {
-        // Check for required digits (e.g., after '.', 'e', '+/-')
-        char last = num_str.back();
-        if (last == '.' || last == 'e' || last == 'E' || last == '+' || last == '-')
-        {
-            out << "ERROR(" << num_str << ") "; // Incomplete float
-            return false;
-        }
-        // Simplification: Assume 'double' unless suffix indicates otherwise
-        out << "double(" << num_str << ") ";
-    }
-    else if (is_hex)
-    {
-        if (num_str.length() <= 2)
-        {
-            // "0x" is invalid
-            out << "ERROR(" << num_str << ") ";
-            return false;
-        }
-        // Simplification: Assume 'int' unless suffix indicates otherwise
-        out << "int_hex(" << num_str << ") ";
-    }
-    else if (is_octal)
-    {
-        // Simplification: Assume 'int' unless suffix indicates otherwise
-        out << "int_oct(" << num_str << ") ";
+        if (l_count == 0) return "unsigned int";
+        if (l_count == 1) return "unsigned long";
+        return "unsigned long long"; // l_count >= 2
     }
     else
     {
-        // Decimal integer (includes "0")
-        // Simplification: Assume 'int' unless suffix indicates otherwise
-        out << "int(" << num_str << ") ";
+        if (l_count == 0) return "int"; // Тип по умолчанию
+        if (l_count == 1) return "long";
+        return "long long"; // l_count >= 2
     }
-
-    return true; // Sequence was processed as potentially valid
 }
 
+// Функция для проверки, является ли символ разделителем (завершает токен)
+// Добавим точку, т.к. 123. - это ошибка для int
+bool is_delimiter(char c) {
+    return std::isspace(c) || std::string("+-*/%=(){}[];,<>&|^!~.").find(c) != std::string::npos;
+}
 
 int main(int argc, char* argv[])
 {
     if (argc != 3)
     {
-        std::cerr << "Usage: " << argv[0] << " <input file> <output file>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <input file> <report file>" << std::endl;
         return 1;
     }
 
     std::ifstream in(argv[1], std::ios::binary);
     if (!in)
     {
-        std::cerr << "Could not open input file: " << argv[1] << std::endl;
+        std::cerr << "Could not open input file." << std::endl;
         return 1;
     }
 
-    std::ofstream out(argv[2], std::ios::binary);
-    if (!out)
-    {
-        std::cerr << "Could not open output file: " << argv[2] << std::endl;
-        return 1;
-    }
+    std::ofstream report_out(argv[2]);
 
     State state = NORMAL;
+    NumberState num_state = IDLE;
+    std::string current_token;
     char c;
-    std::string current_number;
-    // Removed processed_char flag and last_numeric_state (use current state for context)
+    // Символ, сохраненный для проверки на принадлежность к суффиксу
+    char potential_suffix_char = 0;
 
+    // --- Лямбда-функция для финализации токена ---
+    // Вызывается ПЕРЕД обработкой символа, который ЗАВЕРШАЕТ токен
+        // --- Лямбда-функция для финализации токена ---
+    // Вызывается ПЕРЕД обработкой символа, который ЗАВЕРШАЕТ токен
+    auto finalize_token = [&]() {
+        // --- Начальные проверки ---
+        if (current_token.empty()) { // Если токена нет, ничего не делаем
+             // Убедимся, что состояние сброшено на всякий случай
+             num_state = IDLE;
+             potential_suffix_char = 0;
+             return;
+        }
+        // Если состояние уже IDLE, но токен не пуст (не должно происходить при норм. работе)
+        if (num_state == IDLE) {
+             // Просто игнорируем "осиротевший" токен
+             current_token = "";
+             potential_suffix_char = 0;
+             return;
+        }
+
+        // --- Основная логика анализа ---
+
+        // 1. Если автомат уже в состоянии INVALID, это точно ошибка
+        if (num_state == INVALID) {
+             report_out << current_token << "\tERROR" << std::endl;
+        } else {
+            // 2. Автомат НЕ в состоянии INVALID. Анализируем токен.
+            size_t number_end_pos = 0; // Индекс *после* последнего символа числа
+            bool parse_error = false;   // Флаг ошибки парсинга базы
+            bool is_hex = (current_token.length() > 1 && current_token[0] == '0' && (tolower(current_token[1]) == 'x'));
+            // Считаем восьмеричным кандидатом, только если есть цифры после '0'
+            bool is_octal_candidate = (current_token.length() > 1 && current_token[0] == '0' && !is_hex);
+             // Ноль сам по себе - десятичный (или int по типу)
+             if (current_token == "0") is_octal_candidate = false;
+
+            // --- Определяем конец числовой части и проверяем ошибки базы ---
+             if (is_hex) {
+                 // Минимум "0x" + 1 цифра
+                 if (current_token.length() <= 2) {
+                      parse_error = true;
+                      number_end_pos = current_token.length(); // Весь токен - ошибка
+                 } else {
+                     number_end_pos = 2;
+                     while (number_end_pos < current_token.length() && std::isxdigit(current_token[number_end_pos])) {
+                         number_end_pos++;
+                     }
+                     // Если после 0x не было ВООБЩЕ цифр (хотя while бы не сработал)
+                     if (number_end_pos == 2) parse_error = true;
+                 }
+            } else { // Десятичное или восьмеричное
+                 number_end_pos = 0;
+                 while (number_end_pos < current_token.length() && std::isdigit(current_token[number_end_pos])) {
+                     // Проверяем на 8 или 9 только если это восьмеричный кандидат
+                     if (is_octal_candidate && current_token[number_end_pos] > '7') {
+                         parse_error = true; // Нашли 8 или 9 в восьмеричном
+                         // Не прерываем цикл, чтобы захватить весь ошибочный токен
+                     }
+                     number_end_pos++;
+                 }
+                 // Если не было найдено ни одной цифры (например, токен "+")
+                 if (number_end_pos == 0 && current_token != "0") {
+                     // current_token == "0" обрабатывается отдельно
+                     parse_error = true;
+                 }
+                 // "0" сам по себе валиден
+                 if (current_token == "0") parse_error = false;
+            }
+
+            // --- Извлекаем и проверяем суффикс ---
+            std::string suffix = "";
+            bool has_u = false;
+            int l_count = 0; // 0 = нет, 1 = l, 2 = ll
+            bool suffix_is_valid = true; // Предполагаем валидность, если суффикса нет
+
+            // Проверяем, есть ли символы ПОСЛЕ определенной числовой части
+            if (number_end_pos < current_token.length()) {
+                // Есть символы - это суффикс
+                suffix = current_token.substr(number_end_pos);
+                size_t u_count_actual = 0;
+                size_t l_count_actual = 0;
+
+                // Проверяем КАЖДЫЙ символ суффикса
+                for (char sc : suffix) {
+                    char lsc = tolower(sc);
+                    if (lsc == 'u') u_count_actual++;
+                    else if (lsc == 'l') l_count_actual++;
+                    else {
+                        suffix_is_valid = false; // Недопустимый символ в суффиксе
+                        break; // Дальше можно не проверять
+                    }
+                }
+
+                // Если символы были допустимы, проверяем их КОЛИЧЕСТВО
+                if (suffix_is_valid) {
+                    if (u_count_actual > 1 || l_count_actual > 2) {
+                        suffix_is_valid = false; // Слишком много 'u' или 'l'
+                    } else {
+                        // Устанавливаем флаги для get_int_type
+                        has_u = (u_count_actual == 1);
+                        if (l_count_actual == 1) l_count = 1;
+                        else if (l_count_actual == 2) l_count = 2;
+                        else l_count = 0;
+                    }
+                }
+            } // else: Суффикса нет, suffix_is_valid остается true
+
+            // --- Проверяем конечное состояние автомата ---
+            // Допустимые КОНЕЧНЫЕ состояния (где токен может закончиться)
+             bool valid_final_num_state = (
+                 num_state == START_ZERO || num_state == DECIMAL || num_state == OCTAL || num_state == HEX ||
+                 num_state == SUFFIX_U || num_state == SUFFIX_L || num_state == SUFFIX_LL ||
+                 num_state == SUFFIX_UL || num_state == SUFFIX_ULL
+             );
+             // Состояние NUMBER_END_POTENTIAL_SUFFIX означает, что после числа
+             // была буква, которая НЕ начала валидный суффикс - это ошибка.
+             if (num_state == NUMBER_END_POTENTIAL_SUFFIX) {
+                  valid_final_num_state = false; // Не может быть конечным
+                  // parse_error = true; // Можно пометить как ошибку парсинга
+                  // Хотя parse_error относится к базе, а это ошибка структуры
+             }
+
+
+            // --- Итоговое решение ---
+            if (parse_error || !suffix_is_valid || !valid_final_num_state) {
+                // Если была ошибка парсинга базы, ИЛИ невалидный суффикс,
+                // ИЛИ автомат остановился в недопустимом конечном состоянии
+                 report_out << current_token << "\tERROR" << std::endl;
+            } else {
+                 // Ошибок нет, состояние финальное валидное
+                 report_out << current_token << "\t" << get_int_type(has_u, l_count) << std::endl;
+            }
+        } // Конец блока else (если состояние НЕ INVALID)
+
+        // --- Сброс состояния и токена в конце финализации ---
+        current_token = "";
+        num_state = IDLE;
+        potential_suffix_char = 0;
+    };
+    // --- Конец лямбда-функции finalize_token ---
+
+    // --- Основной цикл чтения файла ---
     while (in.get(c))
     {
-        switch (state)
-        {
-        case NORMAL:
-            if (c == '/')
-            {
-                state = SLASH;
-            }
-            else if (c == '"')
-            {
-                out.put(c);
-                state = IN_STRING;
-            }
-            else if (c == '\'')
-            {
-                out.put(c);
-                state = IN_CHAR;
-            }
-            else if (isdigit(c))
-            {
-                current_number += c;
-                state = (c == '0') ? ZERO_START : DECIMAL_INTEGER;
-            }
-            else if (c == '.')
-            {
-                current_number += c;
-                state = AFTER_DOT; // Potential start of float like .5
-            }
-            else
-            {
-                out.put(c); // Normal character
-            }
-            break;
+        // Вспомогательная переменная для повторной обработки символа
+        char char_to_reprocess = 0;
 
-        // --- Comment/String/Char states (unchanged from Lab 1) ---
-        case SLASH:
-            if (c == '*') { state = MULTI_COMMENT; }
-            else if (c == '/') { state = SINGLE_COMMENT; }
-            else
-            {
-                out.put('/'); // Output the buffered slash
-                state = NORMAL;
-                in.putback(c); // Put back the char that followed '/'
-            }
-            break;
-        case MULTI_COMMENT:
-            if (c == '*') { state = STAR_IN_MULTI_COMMENT; }
-            break;
-        case STAR_IN_MULTI_COMMENT:
-            if (c == '/')
-            {
-                out.put(' ');
-                state = NORMAL;
-            } // Replace comment with space
-            else if (c != '*') { state = MULTI_COMMENT; }
-        // else stay in STAR_IN_MULTI_COMMENT if c == '*'
-            break;
-        case SINGLE_COMMENT:
-            if (c == '\n' || c == '\r')
-            {
-                out.put(c);
-                state = NORMAL;
-            } // Keep newline
-        // else stay in SINGLE_COMMENT (ignore char)
-            break;
-        case IN_STRING:
-            out.put(c);
-            if (c == '\\') { state = SLASH_IN_STRING; }
-            else if (c == '"') { state = NORMAL; }
-            break;
-        case IN_CHAR:
-            out.put(c);
-            if (c == '\\') { state = SLASH_IN_CHAR; }
-            else if (c == '\'') { state = NORMAL; }
-            break;
-        case SLASH_IN_STRING:
-            out.put(c);
-            state = IN_STRING;
-            break;
-        case SLASH_IN_CHAR:
-            out.put(c);
-            state = IN_CHAR;
-            break;
+    process_char_again: // Метка для повторной обработки
 
-        // --- Number Recognition States (using putback) ---
-        case ZERO_START: // After '0'
-            if (std::tolower(c) == 'x')
-            {
-                current_number += c;
-                state = HEX_START;
-            }
-            else if (isoctdigit(c))
-            {
-                current_number += c;
-                state = OCTAL;
-            }
-            else if (c == '.')
-            {
-                current_number += c;
-                state = FRACTION; // e.g., 0.1
-            }
-            else if (std::tolower(c) == 'e')
-            {
-                current_number += c;
-                state = EXPONENT_START; // e.g., 0e1
-            }
-            else if (isdigit(c))
-            {
-                // Invalid octal like 08, 09
-                current_number += c;
-                state = INVALID_NUMBER; // Consume the invalid digit
-            }
-            // Add suffix checks here if needed (L, U, F...)
-            else
-            {
-                // End of number '0' or '0.' or '0e' etc.
-                process_number(current_number, state, out); // Process what we have
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c); // Put back the terminating char
-            }
-            break;
-
-        case OCTAL: // Parsing octal digits
-            if (isoctdigit(c))
-            {
-                current_number += c;
-            }
-            else if (isdigit(c) || std::tolower(c) == 'x' || c == '.')
-            {
-                // Invalid octal digit or construct
-                current_number += c;
-                state = INVALID_NUMBER; // Consume invalid char
-            }
-            // Add suffix checks here (L, U...)
-            else
-            {
-                // End of octal number
-                process_number(current_number, state, out);
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c);
-            }
-            break;
-
-        case HEX_START: // After '0x' or '0X'
-            if (isxdigit(c))
-            {
-                current_number += c;
-                state = HEX;
-            }
-            else
-            {
-                // 0x followed by non-hex is invalid
-                // Don't consume 'c', treat '0x' as error
-                process_number(current_number, state, out); // Will likely be marked error by process_number
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c); // Put back the non-hex char
-            }
-            break;
-
-        case HEX: // Parsing hex digits
-            if (isxdigit(c))
-            {
-                current_number += c;
-            }
-            // Add suffix checks here (L, U...)
-            else
-            {
-                // End of hex number
-                process_number(current_number, state, out);
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c);
-            }
-            break;
-
-        case DECIMAL_INTEGER: // Started with 1-9
-            if (isdigit(c))
-            {
-                current_number += c;
-            }
-            else if (c == '.')
-            {
-                current_number += c;
-                state = FRACTION;
-            }
-            else if (std::tolower(c) == 'e')
-            {
-                current_number += c;
-                state = EXPONENT_START;
-            }
-            // Add suffix checks here (L, U, F...)
-            else
-            {
-                // End of decimal integer
-                process_number(current_number, state, out);
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c);
-            }
-            break;
-
-        case AFTER_DOT: // Started with '.'
-            if (isdigit(c))
-            {
-                current_number += c;
-                state = FRACTION; // e.g., .5
-            }
-            else
-            {
-                // '.' followed by non-digit is not a number start
-                out << "."; // Output the dot that was buffered
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c); // Put back the non-digit character
-            }
-            break;
-
-        case FRACTION: // After '.' and at least one digit, or after integer and '.'
-            if (isdigit(c))
-            {
-                current_number += c;
-            }
-            else if (std::tolower(c) == 'e')
-            {
-                current_number += c;
-                state = EXPONENT_START;
-            }
-            // Add suffix checks here (F, L...)
-            else
-            {
-                // End of fractional part
-                process_number(current_number, state, out);
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c);
-            }
-            break;
-
-        case EXPONENT_START: // After 'e' or 'E'
-            if (isdigit(c))
-            {
-                current_number += c;
-                state = EXPONENT;
-            }
-            else if (c == '+' || c == '-')
-            {
-                current_number += c;
-                state = EXPONENT_SIGN;
-            }
-            else
-            {
-                // 'e'/'E' not followed by digit or sign is error
-                process_number(current_number, state, out); // Mark as error
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c); // Put back the problematic char
-            }
-            break;
-
-        case EXPONENT_SIGN: // After 'e'/'E' and '+' or '-'
-            if (isdigit(c))
-            {
-                current_number += c;
-                state = EXPONENT;
-            }
-            else
-            {
-                // Sign not followed by digit is error
-                process_number(current_number, state, out); // Mark as error
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c); // Put back the problematic char
-            }
-            break;
-
-        case EXPONENT: // Parsing exponent digits
-            if (isdigit(c))
-            {
-                current_number += c;
-            }
-            // Add suffix checks here (F, L...)
-            else
-            {
-                // End of exponent part
-                process_number(current_number, state, out);
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c);
-            }
-            break;
-
-        case INVALID_NUMBER: // Consuming until end of invalid number sequence
-            // Keep consuming potential parts of the bad number
-            if (isdigit(c) || isalpha(c) || c == '.')
-            {
-                current_number += c;
-            }
-            else
-            {
-                // End of invalid sequence
-                process_number(current_number, state, out); // Report the error
-                current_number.clear();
-                state = NORMAL;
-                in.putback(c); // Put back the terminating character
-            }
-            break;
-        } // end switch(state)
-    } // end while(in.get(c))
-
-    // --- Handle End of File ---
-    // If EOF is reached while processing a number, finalize it.
-    if (!current_number.empty())
-    {
-        // Use 'state' as context for process_number
-        if (state == AFTER_DOT)
-        {
-            // Special case: '.' at EOF is just a dot.
-            out << ".";
+        // Если есть символ для повторной обработки, используем его
+        if (char_to_reprocess != 0) {
+            c = char_to_reprocess;
+            char_to_reprocess = 0; // Сбрасываем
         }
-        // Let process_number handle final validation based on the state we were in
-        else
-        {
-            process_number(current_number, state, out);
+
+        // 0. Обработка смены основного состояния (комментарии, строки)
+        if (state == NORMAL) {
+            // Проверяем, не начинается ли комментарий или строка
+             if (c == '/') {
+                 // Может быть комментарий ИЛИ завершение числа перед оператором
+                 finalize_token(); // Завершаем предыдущий токен (если был)
+                 state = SLASH;    // Переходим в состояние проверки '/'
+                 continue;         // Переходим к след. итерации для обработки '/' в SLASH
+             } else if (c == '"') {
+                 finalize_token();
+                 state = IN_STRING;
+                 continue;
+             } else if (c == '\'') {
+                 finalize_token();
+                 state = IN_CHAR;
+                 continue;
+             }
+             // Если это не начало комм/строки, остаемся в NORMAL
+        } else {
+             // Мы НЕ в NORMAL, обрабатываем комментарии/строки и т.д.
+             // (Логика как в Лаб 1, но без вывода символов)
+              switch (state) {
+                 case SLASH:
+                     if (c == '*') state = MULTI_COMMENT;
+                     else if (c == '/') state = SINGLE_COMMENT;
+                     else { // Был оператор деления
+                         state = NORMAL;
+                         // Оператор '/' был проигнорирован, теперь обрабатываем 'c' в NORMAL
+                         char_to_reprocess = c; // Повторно обработаем 'c'
+                         goto process_char_again;
+                     }
+                     break;
+                 // ... остальные case для комментариев/строк ...
+                 case MULTI_COMMENT: if (c == '*') state = STAR_IN_MULTI_COMMENT; break;
+                 case STAR_IN_MULTI_COMMENT: if (c == '/') state = NORMAL; else if (c != '*') state = MULTI_COMMENT; break;
+                 case SINGLE_COMMENT: if (c == '\n' || c == '\r') state = NORMAL; break;
+                 case IN_STRING: if (c == '\\') state = SLASH_IN_STRING; else if (c == '"') state = NORMAL; break;
+                 case IN_CHAR: if (c == '\\') state = SLASH_IN_CHAR; else if (c == '\'') state = NORMAL; break;
+                 case SLASH_IN_STRING: state = IN_STRING; break;
+                 case SLASH_IN_CHAR: state = IN_CHAR; break;
+                 default: state = NORMAL; break; // На всякий случай
+             }
+             continue; // Пропускаем обработку числа для не-NORMAL состояний
         }
-    }
-    else if (state == SLASH)
-    {
-        // Handle '/' at EOF
-        out.put('/');
-    }
+
+        // --- Обработка символа 'c' в состоянии NORMAL ---
+
+        // 1. Обработка состояния INVALID
+        if (num_state == INVALID) {
+             if (is_delimiter(c)) { // Разделитель завершает ошибочный токен
+                 finalize_token(); // Выведет ошибку и сбросит state в IDLE
+                 // Разделитель сам по себе игнорируется
+             } else { // Считаем символ продолжением ошибочного токена
+                 current_token += c;
+             }
+             continue; // Переходим к следующей итерации
+        }
+
+        // 2. Проверка на завершение ВАЛИДНОГО токена разделителем
+        // (Исключаем NUMBER_END_POTENTIAL_SUFFIX, т.к. там символ - буква)
+        if (num_state != IDLE && num_state != NUMBER_END_POTENTIAL_SUFFIX && is_delimiter(c)) {
+            finalize_token(); // Завершаем валидный токен, выведет результат
+            // Разделитель игнорируется
+            continue; // Переходим к следующей итерации
+        }
+
+        // 3. Основная логика переходов автомата чисел
+        bool expected_digit = false;
+        switch (num_state)
+        {
+            case IDLE:
+                if (c == '0') { num_state = START_ZERO; current_token += c; }
+                else if (std::isdigit(c)) { num_state = DECIMAL; current_token += c; }
+                // Иначе (буква, оператор и т.д.) - игнорируем, остаемся в IDLE
+                break;
+
+            case START_ZERO: // Мы прочитали '0'
+                if (c == 'x' || c == 'X') { num_state = HEX_START; current_token += c; }
+                else if (c >= '0' && c <= '7') { num_state = OCTAL; current_token += c; }
+                else if (std::isalpha(c)) { // Возможно, суффикс
+                    num_state = NUMBER_END_POTENTIAL_SUFFIX;
+                    potential_suffix_char = c; // Сохраняем букву
+                } else { // Недопустимый символ (8, 9, .) или разделитель
+                    // Разделитель должен был вызвать finalize выше
+                    current_token += c; num_state = INVALID;
+                }
+                break;
+
+            case DECIMAL: // Внутри 1..9...
+            case OCTAL:   // Внутри 0[0-7]...
+            case HEX:     // Внутри 0x[0-f]...
+                if (num_state == DECIMAL) expected_digit = std::isdigit(c);
+                else if (num_state == OCTAL) expected_digit = (c >= '0' && c <= '7');
+                else /* num_state == HEX */ expected_digit = std::isxdigit(c);
+
+                if (expected_digit) {
+                    current_token += c; // Остаемся в том же состоянии
+                     if (num_state == OCTAL && c > '7') num_state = INVALID; // Явная ошибка для 8,9
+                } else if (std::isalpha(c)) { // Возможно, суффикс
+                    num_state = NUMBER_END_POTENTIAL_SUFFIX;
+                    potential_suffix_char = c; // Сохраняем букву
+                } else { // Не цифра нужной базы, не буква, не разделитель
+                    // Разделитель должен был вызвать finalize выше
+                    current_token += c; num_state = INVALID;
+                }
+                break;
+
+             case HEX_START: // Мы прочитали '0x'
+                if (std::isxdigit(c)) { num_state = HEX; current_token += c; }
+                else { // Сразу после '0x' не hex-цифра
+                    current_token += c; num_state = INVALID;
+                }
+                break;
+
+            // ---> Обработка буквы после числа <---
+            // ---> Обработка буквы после числа <---
+        case NUMBER_END_POTENTIAL_SUFFIX:
+            // 'potential_suffix_char' содержит букву, прочитанную на пред. шаге ('a')
+                // 'c' - это символ, идущий ПОСЛЕ этой буквы (например, разделитель)
+            {
+                char first_letter = potential_suffix_char; // 'a'
+                char first_letter_lower = tolower(first_letter);
+                potential_suffix_char = 0; // Сбрасываем
+
+                if (first_letter_lower == 'u') {
+                    current_token += first_letter; // Добавляем 'u' к токену "12" -> "12u"
+                    num_state = SUFFIX_U; // Переходим в состояние суффикса
+                    char_to_reprocess = c; // Повторно обработаем 'c' в новом состоянии
+                    goto process_char_again;
+                } else if (first_letter_lower == 'l') {
+                    current_token += first_letter; // Добавляем 'l' к токену "12" -> "12l"
+                    num_state = SUFFIX_L;
+                    char_to_reprocess = c;
+                    goto process_char_again;
+                } else {
+                    // Буква была не 'u' и не 'l'. Это ошибка для целочисленной константы.
+                    current_token += first_letter; // Добавляем 'a' к токену "12" -> "12a"
+                    num_state = INVALID;           // Переходим в состояние ошибки
+                    char_to_reprocess = c;         // Повторно обработаем 'c' в состоянии INVALID
+                    // (скорее всего, 'c' будет разделителем и вызовет finalize)
+                    goto process_char_again;
+                }
+            }
+            break; // Конец case NUMBER_END_POTENTIAL_SUFFIX
+                 break; // Конец case NUMBER_END_POTENTIAL_SUFFIX
+
+            // ---> Обработка состояний суффикса <---
+             case SUFFIX_U: // Прочитали ...u
+                 if (tolower(c) == 'l') { num_state = SUFFIX_UL; current_token += c;}
+                 else { current_token += c; num_state = INVALID; } // Любой другой символ - ошибка
+                 break;                                             // (Разделители обработаны выше)
+             case SUFFIX_L: // Прочитали ...l
+                 if (tolower(c) == 'l') { num_state = SUFFIX_LL; current_token += c;}
+                 else if (tolower(c) == 'u') { num_state = SUFFIX_UL; current_token += c;}
+                 else { current_token += c; num_state = INVALID; }
+                 break;
+            case SUFFIX_LL: // Прочитали ...ll
+                 if (tolower(c) == 'u') { num_state = SUFFIX_ULL; current_token += c;}
+                 else { current_token += c; num_state = INVALID; }
+                 break;
+             case SUFFIX_UL: // Прочитали ...ul или ...lu
+                 if (tolower(c) == 'l') { num_state = SUFFIX_ULL; current_token += c;} // ul + l = ull
+                 else { current_token += c; num_state = INVALID; }
+                 break;
+             case SUFFIX_ULL: // Прочитали ...ull или ...llu
+                 // Любой символ после этого - ошибка
+                 current_token += c; num_state = INVALID;
+                 break;
+
+        } // Конец switch(num_state)
+
+    } // Конец while(in.get(c))
+
+    // Финализация последнего токена после выхода из цикла
+    finalize_token();
 
     in.close();
-    out.close();
+    report_out.close();
 
-    std::cout << "Processing complete. Output written to " << argv[2] << std::endl;
+    std::cout << "Report generated successfully." << std::endl; // Сообщение пользователю
 
     return 0;
 }
