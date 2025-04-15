@@ -1,0 +1,43 @@
+digraph StateFA {
+    rankdir=LR;
+    NORMAL [shape=circle, label="NORMAL"];
+    SLASH [shape=circle, label="SLASH"];
+    MULTI_COMMENT [shape=circle, label="MULTI_COMMENT"];
+    STAR_IN_MULTI_COMMENT [shape=circle, label="STAR_IN_MULTI_COMMENT"];
+    SINGLE_COMMENT [shape=circle, label="SINGLE_COMMENT"];
+    IN_STRING [shape=circle, label="IN_STRING"];
+    IN_CHAR [shape=circle, label="IN_CHAR"];
+    SLASH_IN_STRING [shape=circle, label="SLASH_IN_STRING"];
+    SLASH_IN_CHAR [shape=circle, label="SLASH_IN_CHAR"];
+
+    NORMAL -> SLASH [label="/"];
+    NORMAL -> IN_STRING [label="\""];
+    NORMAL -> IN_CHAR [label="'"];
+    NORMAL -> NORMAL [label="∀с"];
+
+    SLASH -> SINGLE_COMMENT [label="/"];
+    SLASH -> MULTI_COMMENT [label="*"];
+    SLASH -> NORMAL [label="∀с"];
+
+    MULTI_COMMENT -> STAR_IN_MULTI_COMMENT [label="*"];
+    MULTI_COMMENT -> MULTI_COMMENT [label="∀с"];
+
+    STAR_IN_MULTI_COMMENT -> MULTI_COMMENT [label="∀c"];
+    STAR_IN_MULTI_COMMENT -> STAR_IN_MULTI_COMMENT [label="*"];
+    STAR_IN_MULTI_COMMENT -> NORMAL [label="/"];
+
+    SINGLE_COMMENT -> SINGLE_COMMENT [label="∀c"];
+    SINGLE_COMMENT -> NORMAL [label="\\n or \\r"];
+
+    IN_STRING -> SLASH_IN_STRING [label="\\"];
+    IN_STRING -> NORMAL [label="\""];
+    IN_STRING -> IN_STRING [label="∀с"];
+
+    SLASH_IN_STRING -> IN_STRING [label="∀с"];
+
+    IN_CHAR -> SLASH_IN_CHAR [label="\\"];
+    IN_CHAR -> NORMAL [label="'"];
+    IN_CHAR -> IN_CHAR [label="∀с"];
+
+    SLASH_IN_CHAR -> IN_CHAR [label="∀с"];
+}
