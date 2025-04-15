@@ -1,5 +1,4 @@
 digraph NumberFA {
-    rankdir=LR;
     IDLE [shape=circle, label="IDLE"];
     START_ZERO [shape=circle];
     OCTAL [shape=circle];
@@ -16,46 +15,63 @@ digraph NumberFA {
 
     IDLE -> START_ZERO [label="'0'"];
     IDLE -> DECIMAL [label="'1'-'9'"];
-    START_ZERO -> OCTAL [label="'0'-'7'"];
+    IDLE -> IDLE [label="∀c"];
+    
     START_ZERO -> HEX_START [label="'x'/'X'"];
+    START_ZERO -> OCTAL [label="'0'-'7'"];
+    START_ZERO -> SUFFIX_U [label="'u'/'U'"];
+    START_ZERO -> SUFFIX_L [label="'l'/'L'"];
     START_ZERO -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
-    START_ZERO -> SUFFIX_U [label="'u'"];
-    START_ZERO -> SUFFIX_L [label="'l'"];
-    OCTAL -> OCTAL [label="'0'-'7'"];
-    OCTAL -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
-    OCTAL -> SUFFIX_U [label="'u'"];
-    OCTAL -> SUFFIX_L [label="'l'"];
+    START_ZERO -> INVALID [label="∀c"];
+
     DECIMAL -> DECIMAL [label="'0'-'9'"];
+    DECIMAL -> SUFFIX_U [label="'u'/'U'"];
+    DECIMAL -> SUFFIX_L [label="'l'/'L'"];
     DECIMAL -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
-    DECIMAL -> SUFFIX_U [label="'u'"];
-    DECIMAL -> SUFFIX_L [label="'l'"];
-    HEX_START -> HEX [label="'0'-'9','a'-'f','A'-'F'"];
-    HEX -> HEX [label="'0'-'9','a'-'f','A'-'F'"];
+    DECIMAL -> INVALID [label="∀c"];
+
+    OCTAL -> OCTAL [label="'0'-'7'"];
+    OCTAL -> SUFFIX_U [label="'u'/'U'"];
+    OCTAL -> SUFFIX_L [label="'l'/'L'"];
+    OCTAL -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
+    OCTAL -> INVALID [label="∀c"];
+
+    HEX_START -> HEX [label="hex-цифра"];
+    HEX_START -> INVALID [label="разделитель или ∀c"];
+
+    HEX -> HEX [label="hex-цифра"];
+    HEX -> SUFFIX_U [label="'u'/'U'"];
+    HEX -> SUFFIX_L [label="'l'/'L'"];
     HEX -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
-    HEX -> SUFFIX_U [label="'u'"];
-    HEX -> SUFFIX_L [label="'l'"];
-    SUFFIX_U -> SUFFIX_UL [label="'l'"];
-    SUFFIX_U -> SUFFIX_ULL [label="'ll'"];
+    HEX -> INVALID [label="∀c"];
+
+    NUMBER_END_POTENTIAL_SUFFIX -> SUFFIX_U [label="'u'/'U'"];
+    NUMBER_END_POTENTIAL_SUFFIX -> SUFFIX_L [label="'l'/'L'"];
+    NUMBER_END_POTENTIAL_SUFFIX -> INVALID [label="∀c"];
+    NUMBER_END_POTENTIAL_SUFFIX -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
+
+    SUFFIX_U -> SUFFIX_UL [label="'l'/'L'"];
+    SUFFIX_U -> SUFFIX_ULL [label="'ll'/'LL'"];
     SUFFIX_U -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
-    SUFFIX_L -> SUFFIX_LL [label="'l'"];
-    SUFFIX_L -> SUFFIX_UL [label="'u'"];
-    SUFFIX_L -> SUFFIX_ULL [label="'u' 'l'"];
+    SUFFIX_U -> INVALID [label="∀c"];
+
+    SUFFIX_L -> SUFFIX_LL [label="'l'/'L'"];
+    SUFFIX_L -> SUFFIX_UL [label="'u'/'U'"];
+    SUFFIX_L -> SUFFIX_ULL [label="'u''l'/'U''L'"];
     SUFFIX_L -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
-    SUFFIX_LL -> SUFFIX_ULL [label="'u'"];
+    SUFFIX_L -> INVALID [label="∀c"];
+
+    SUFFIX_LL -> SUFFIX_ULL [label="'u'/'U'"];
     SUFFIX_LL -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
-    SUFFIX_UL -> SUFFIX_ULL [label="'l'"];
+    SUFFIX_LL -> INVALID [label="∀c"];
+
+    SUFFIX_UL -> SUFFIX_ULL [label="'l'/'L'"];
     SUFFIX_UL -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
+    SUFFIX_UL -> INVALID [label="∀c"];
+
     SUFFIX_ULL -> NUMBER_END_POTENTIAL_SUFFIX [label="разделитель"];
+    SUFFIX_ULL -> INVALID [label="∀c"];
+
     // Ошибочные переходы
-    IDLE -> INVALID [label="∀с"];
-    START_ZERO -> INVALID [label="∀с"];
-    OCTAL -> INVALID [label="∀с"];
-    DECIMAL -> INVALID [label="∀с"];
-    HEX_START -> INVALID [label="∀с"];
-    HEX -> INVALID [label="∀с"];
-    SUFFIX_U -> INVALID [label="∀с"];
-    SUFFIX_L -> INVALID [label="∀с"];
-    SUFFIX_LL -> INVALID [label="∀с"];
-    SUFFIX_UL -> INVALID [label="∀с"];
-    SUFFIX_ULL -> INVALID [label="∀с"];
+    IDLE -> INVALID [label="∀c"];
 }

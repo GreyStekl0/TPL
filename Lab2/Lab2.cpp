@@ -43,17 +43,17 @@ std::string get_int_type(bool has_u, int l_count)
     {
         if (l_count == 0) return "unsigned int";
         if (l_count == 1) return "unsigned long";
-        return "unsigned long long"; // l_count >= 2
+        return "unsigned long long"; // l_count = 2
     }
     if (l_count == 0) return "int"; // Тип по умолчанию
     if (l_count == 1) return "long";
-    return "long long"; // l_count >= 2
+    return "long long"; // l_count = 2
 }
 
 // Функция для проверки, является ли символ разделителем (завершает токен)
 bool is_delimiter(char c)
 {
-    return std::isspace(c) || std::string("+-*/%=(){}[];,<>&|^!~.:?").find(c) != std::string::npos;
+    return std::isspace(c) || std::string("+-*/%=(){}[];,<>&|^!~?#:").find(c) != std::string::npos;
 }
 
 int main(int argc, char* argv[])
@@ -87,7 +87,8 @@ int main(int argc, char* argv[])
     // Вызывается ПЕРЕД обработкой символа, который ЗАВЕРШАЕТ токен
     auto finalize_token = [&]()
     {
-        if (current_token.empty()) {
+        if (current_token.empty())
+        {
             // Не выводим ничего для пустого токена
             num_state = IDLE;
             potential_suffix_char = 0;
@@ -98,9 +99,12 @@ int main(int argc, char* argv[])
         }
         // --- Основная логика анализа ---
         // 1. Если автомат уже в состоянии INVALID, это точно ошибка
-        if (num_state == INVALID) {
+        if (num_state == INVALID)
+        {
             report_out << current_token << "\tERROR" << std::endl;
-        } else {
+        }
+        else
+        {
             // Считаем, что если не INVALID, то автомат уже определил тип и валидность
             // Здесь просто выводим результат
             report_out << current_token << "\t" << get_int_type(has_u, l_count) << std::endl;
@@ -205,7 +209,8 @@ int main(int argc, char* argv[])
         }
 
         // --- Обработка символа 'c' в состоянии NORMAL ---
-        if (num_state == IDLE) {
+        if (num_state == IDLE)
+        {
             saw_digit = false;
             has_u = false;
             l_count = 0;
@@ -232,7 +237,8 @@ int main(int argc, char* argv[])
         // (Исключаем NUMBER_END_POTENTIAL_SUFFIX, т.к. там символ - буква)
         if (num_state != IDLE && num_state != NUMBER_END_POTENTIAL_SUFFIX && is_delimiter(c))
         {
-            if (num_state == HEX_START && !saw_digit) {
+            if (num_state == HEX_START && !saw_digit)
+            {
                 num_state = INVALID;
             }
             if (c == '.')
@@ -260,7 +266,7 @@ int main(int argc, char* argv[])
                 current_token += c;
                 saw_digit = true;
             }
-            // Иначе (буква, оператор и т.д.) - игнорируем, остаемся в IDLE
+        // Иначе (буква, оператор и т.д.) - игнорируем, остаемся в IDLE
             break;
 
         case START_ZERO: // Мы прочитали '0'
@@ -334,11 +340,6 @@ int main(int argc, char* argv[])
                 current_token += c;
                 saw_digit = true;
             }
-            else if (c == '8' || c == '9')
-            {
-                num_state = INVALID;
-                current_token += c;
-            }
             else if (c == 'u' || c == 'U')
             {
                 num_state = SUFFIX_U;
@@ -371,7 +372,8 @@ int main(int argc, char* argv[])
             }
             else if (is_delimiter(c))
             {
-                if (!saw_digit) {
+                if (!saw_digit)
+                {
                     num_state = INVALID;
                 }
                 // finalize_token вызовется выше
@@ -449,11 +451,14 @@ int main(int argc, char* argv[])
         case SUFFIX_U: // Прочитали ...u
             if (c == 'l' || c == 'L')
             {
-                if (l_count == 0) {
+                if (l_count == 0)
+                {
                     num_state = SUFFIX_UL;
                     current_token += c;
                     l_count = 1;
-                } else {
+                }
+                else
+                {
                     num_state = INVALID;
                     current_token += c;
                 }
@@ -472,22 +477,28 @@ int main(int argc, char* argv[])
         case SUFFIX_L: // Прочитали ...l
             if (c == 'l' || c == 'L')
             {
-                if (l_count == 1) {
+                if (l_count == 1)
+                {
                     num_state = SUFFIX_LL;
                     current_token += c;
                     l_count = 2;
-                } else {
+                }
+                else
+                {
                     num_state = INVALID;
                     current_token += c;
                 }
             }
             else if (c == 'u' || c == 'U')
             {
-                if (!has_u) {
+                if (!has_u)
+                {
                     num_state = SUFFIX_UL;
                     current_token += c;
                     has_u = true;
-                } else {
+                }
+                else
+                {
                     num_state = INVALID;
                     current_token += c;
                 }
@@ -506,11 +517,14 @@ int main(int argc, char* argv[])
         case SUFFIX_LL: // Прочитали ...ll
             if (c == 'u' || c == 'U')
             {
-                if (!has_u) {
+                if (!has_u)
+                {
                     num_state = SUFFIX_ULL;
                     current_token += c;
                     has_u = true;
-                } else {
+                }
+                else
+                {
                     num_state = INVALID;
                     current_token += c;
                 }
@@ -527,13 +541,18 @@ int main(int argc, char* argv[])
             break;
 
         case SUFFIX_UL: // Прочитали ...ul или ...lu
+            // После ul/lu разрешён только разделитель или один дополнительный l (чтобы получить строго ull/llu), но не ul*l* или lu*l*
             if (c == 'l' || c == 'L')
             {
-                if (l_count == 1) {
+                // Если уже был l_count == 1 (ul/lu), то ещё один l даёт ull/llu (l_count == 2), но запрещаем больше l
+                if (l_count == 1 && !has_u)
+                {
                     num_state = SUFFIX_ULL;
                     current_token += c;
                     l_count = 2;
-                } else {
+                }
+                else
+                {
                     num_state = INVALID;
                     current_token += c;
                 }
@@ -560,7 +579,6 @@ int main(int argc, char* argv[])
                 current_token += c;
             }
             break;
-
         } // Конец switch(num_state)
     } // Конец while(in.get(c))
 
