@@ -53,7 +53,7 @@ std::string get_int_type(bool has_u, int l_count)
 // Функция для проверки, является ли символ разделителем (завершает токен)
 bool is_delimiter(char c)
 {
-    return std::isspace(c) || std::string("+-*/%=(){}[];,<>&|^!~.").find(c) != std::string::npos;
+    return std::isspace(c) || std::string("+-*/%=(){}[];,<>&|^!~.:?").find(c) != std::string::npos;
 }
 
 int main(int argc, char* argv[])
@@ -95,9 +95,6 @@ int main(int argc, char* argv[])
             l_count = 0;
             saw_digit = false;
             return;
-        }
-        if (!saw_digit) {
-            num_state = INVALID;
         }
         // --- Основная логика анализа ---
         // 1. Если автомат уже в состоянии INVALID, это точно ошибка
@@ -235,6 +232,9 @@ int main(int argc, char* argv[])
         // (Исключаем NUMBER_END_POTENTIAL_SUFFIX, т.к. там символ - буква)
         if (num_state != IDLE && num_state != NUMBER_END_POTENTIAL_SUFFIX && is_delimiter(c))
         {
+            if (num_state == HEX_START && !saw_digit) {
+                num_state = INVALID;
+            }
             if (c == '.')
             {
                 current_token += c; // Добавляем точку к токену
@@ -243,17 +243,6 @@ int main(int argc, char* argv[])
             finalize_token(); // Завершаем токен, выведет результат
             // Разделитель сам по себе игнорируется
             continue; // Переходим к следующей итерации
-        }
-
-        // 3. Проверки валидности токена
-        if (current_token.empty() && (num_state != IDLE)) {
-            num_state = INVALID;
-        }
-        if (num_state == HEX_START && current_token.length() <= 2) {
-            num_state = INVALID;
-        }
-        if ((num_state == OCTAL || num_state == DECIMAL) && current_token.length() == 1 && !std::isdigit(current_token[0])) {
-            num_state = INVALID;
         }
 
         // 4. Основная логика переходов автомата чисел
@@ -379,6 +368,13 @@ int main(int argc, char* argv[])
                 num_state = HEX;
                 current_token += c;
                 saw_digit = true;
+            }
+            else if (is_delimiter(c))
+            {
+                if (!saw_digit) {
+                    num_state = INVALID;
+                }
+                // finalize_token вызовется выше
             }
             else
             {
