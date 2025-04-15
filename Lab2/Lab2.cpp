@@ -1,7 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <cctype>    // Для isdigit, isxdigit, tolower, isalpha, isalnum, isspace
+#include <cctype>
 
 // Состояния внешнего автомата (комментарии, строки)
 enum State
@@ -45,16 +45,12 @@ std::string get_int_type(bool has_u, int l_count)
         if (l_count == 1) return "unsigned long";
         return "unsigned long long"; // l_count >= 2
     }
-    else
-    {
-        if (l_count == 0) return "int"; // Тип по умолчанию
-        if (l_count == 1) return "long";
-        return "long long"; // l_count >= 2
-    }
+    if (l_count == 0) return "int"; // Тип по умолчанию
+    if (l_count == 1) return "long";
+    return "long long"; // l_count >= 2
 }
 
 // Функция для проверки, является ли символ разделителем (завершает токен)
-// Добавим точку, т.к. 123. - это ошибка для int
 bool is_delimiter(char c) {
     return std::isspace(c) || std::string("+-*/%=(){}[];,<>&|^!~.").find(c) != std::string::npos;
 }
@@ -110,7 +106,7 @@ int main(int argc, char* argv[])
             // 2. Автомат НЕ в состоянии INVALID. Анализируем токен.
             size_t number_end_pos = 0; // Индекс *после* последнего символа числа
             bool parse_error = false;   // Флаг ошибки парсинга базы
-            bool is_hex = (current_token.length() > 1 && current_token[0] == '0' && (tolower(current_token[1]) == 'x'));
+            const bool is_hex = (current_token.length() > 1 && current_token[0] == '0' && (tolower(current_token[1]) == 'x'));
             // Считаем восьмеричным кандидатом, только если есть цифры после '0'
             bool is_octal_candidate = (current_token.length() > 1 && current_token[0] == '0' && !is_hex);
              // Ноль сам по себе - десятичный (или int по типу)
@@ -150,7 +146,6 @@ int main(int argc, char* argv[])
             }
 
             // --- Извлекаем и проверяем суффикс ---
-            std::string suffix; // Было: std::string suffix = "";
             bool has_u = false;
             int l_count = 0; // 0 = нет, 1 = l, 2 = ll
             bool suffix_is_valid = true; // Предполагаем валидность, если суффикса нет
@@ -158,13 +153,13 @@ int main(int argc, char* argv[])
             // Проверяем, есть ли символы ПОСЛЕ определенной числовой части
             if (number_end_pos < current_token.length()) {
                 // Есть символы - это суффикс
-                suffix = current_token.substr(number_end_pos);
+                std::string suffix = current_token.substr(number_end_pos);
                 size_t u_count_actual = 0;
                 size_t l_count_actual = 0;
 
                 // Проверяем КАЖДЫЙ символ суффикса
-                for (char sc : suffix) {
-                    char lsc = tolower(sc);
+                for (const char sc : suffix) {
+                    const char lsc = tolower(sc);
                     if (lsc == 'u') u_count_actual++;
                     else if (lsc == 'l') l_count_actual++;
                     else {
@@ -198,8 +193,6 @@ int main(int argc, char* argv[])
              // была буква, которая НЕ начала валидный суффикс - это ошибка.
              if (num_state == NUMBER_END_POTENTIAL_SUFFIX) {
                   valid_final_num_state = false; // Не может быть конечным
-                  // parse_error = true; // Можно пометить как ошибку парсинга
-                  // Хотя parse_error относится к базе, а это ошибка структуры
              }
 
 
@@ -232,7 +225,6 @@ int main(int argc, char* argv[])
         // Если есть символ для повторной обработки, используем его
         if (char_to_reprocess != 0) {
             c = char_to_reprocess;
-            char_to_reprocess = 0; // Сбрасываем
         }
 
         // 0. Обработка смены основного состояния (комментарии, строки)
@@ -243,16 +235,18 @@ int main(int argc, char* argv[])
                  finalize_token(); // Завершаем предыдущий токен (если был)
                  state = SLASH;    // Переходим в состояние проверки '/'
                  continue;         // Переходим к след. итерации для обработки '/' в SLASH
-             } else if (c == '"') {
-                 finalize_token();
-                 state = IN_STRING;
-                 continue;
-             } else if (c == '\'') {
-                 finalize_token();
-                 state = IN_CHAR;
-                 continue;
              }
-             // Если это не начало комм/строки, остаемся в NORMAL
+            if (c == '"') {
+                finalize_token();
+                state = IN_STRING;
+                continue;
+            }
+            if (c == '\'') {
+                finalize_token();
+                state = IN_CHAR;
+                continue;
+            }
+            // Если это не начало комм/строки, остаемся в NORMAL
         } else {
              // Мы НЕ в NORMAL, обрабатываем комментарии/строки и т.д.
              // (Логика как в Лаб 1, но без вывода символов)
@@ -296,7 +290,6 @@ int main(int argc, char* argv[])
         // 2. Проверка на завершение ВАЛИДНОГО токена разделителем
         // (Исключаем NUMBER_END_POTENTIAL_SUFFIX, т.к. там символ - буква)
         if (num_state != IDLE && num_state != NUMBER_END_POTENTIAL_SUFFIX && is_delimiter(c)) {
-            // --- Исправление: если разделитель — точка, то это ошибка для целого числа ---
             if (c == '.') {
                 current_token += c; // Добавляем точку к токену
                 num_state = INVALID; // Помечаем токен как ошибочный
@@ -358,7 +351,7 @@ int main(int argc, char* argv[])
             case NUMBER_END_POTENTIAL_SUFFIX:
             // ---> Обработка буквы после числа <---
             // 'potential_suffix_char' содержит букву, прочитанную на пред. шаге ('a')
-                // 'c' - это символ, идущий ПОСЛЕ этой буквы (например, разделитель)
+            // 'c' - это символ, идущий ПОСЛЕ этой буквы (например, разделитель)
             {
                 char first_letter = potential_suffix_char; // 'a'
                 char first_letter_lower = tolower(first_letter);
@@ -369,21 +362,21 @@ int main(int argc, char* argv[])
                     num_state = SUFFIX_U; // Переходим в состояние суффикса
                     char_to_reprocess = c; // Повторно обработаем 'c' в новом состоянии
                     goto process_char_again;
-                } else if (first_letter_lower == 'l') {
+                }
+                if (first_letter_lower == 'l') {
                     current_token += first_letter; // Добавляем 'l' к токену "12" -> "12l"
                     num_state = SUFFIX_L;
                     char_to_reprocess = c;
                     goto process_char_again;
-                } else {
-                    // Буква была не 'u' и не 'l'. Это ошибка для целочисленной константы.
-                    current_token += first_letter; // Добавляем 'a' к токену "12" -> "12a"
-                    num_state = INVALID;           // Переходим в состояние ошибки
-                    char_to_reprocess = c;         // Повторно обработаем 'c' в состоянии INVALID
-                    // (скорее всего, 'c' будет разделителем и вызовет finalize)
-                    goto process_char_again;
                 }
+                // Буква была не 'u' и не 'l'. Это ошибка для целочисленной константы.
+                current_token += first_letter; // Добавляем 'a' к токену "12" -> "12a"
+                num_state = INVALID;           // Переходим в состояние ошибки
+                char_to_reprocess = c;         // Повторно обработаем 'c' в состоянии INVALID
+                // (скорее всего, 'c' будет разделителем и вызовет finalize)
+                goto process_char_again;
             }
-            break; // Конец case NUMBER_END_POTENTIAL_SUFFIX
+            // Конец case NUMBER_END_POTENTIAL_SUFFIX
 
             // ---> Обработка состояний суффикса <---
              case SUFFIX_U: // Прочитали ...u
