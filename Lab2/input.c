@@ -1,24 +1,21 @@
-// Example input.cpp
-int main() {
-    int a = 12;       // Decimal
-    int b = 0123;      // Octal
-    int c = 0x123;     // Hexadecimal
-    unsigned int u = 123u;
-    long l = 123L;
-    unsigned long ul = 123UL;
-    long long ll = 123LL;
-    unsigned long long ull = 123ull;
-    const char* s = "string 123 0x45"; // Inside string
-    char ch = '0'; /* Multi 0777 comment */
-    int zero = 0;
-    int hex_up = 0XFFLu;
-    int invalid_oct = 08; // Error
-    int invalid_hex = 0xG; // Error
-    int invalid_dec = 12a; // Error (12 is int, 'a' is separate)
-    int just_u = u; // This 'u' is an identifier
-    long l_only = 1l;
-    int zero_l = 0L;
-
-    // Single line 0xABC comment
-    return 0;
-}
+// Примеры целых констант
+123
+0123
+0x123
+0XABC
+0x1a3ul
+0777ul
+0b101 // невалидно для C/C++
+123l
+123ll
+123u
+123ul
+123ull
+0x1G   // ошибка: G не hex-цифра
+08     // ошибка: 8 не восьмеричная
+123.   // ошибка: точка после числа
+0x     // ошибка: нет цифр после 0x
+123abc // ошибка: недопустимый суффикс
+// Числа внутри комментариев не должны распознаваться: 555
+"456"   // Число в строке не должно распознаваться
+'7'     // Число в символе не должно распознаваться

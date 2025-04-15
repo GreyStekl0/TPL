@@ -85,8 +85,6 @@ int main(int argc, char* argv[])
 
     // --- Лямбда-функция для финализации токена ---
     // Вызывается ПЕРЕД обработкой символа, который ЗАВЕРШАЕТ токен
-        // --- Лямбда-функция для финализации токена ---
-    // Вызывается ПЕРЕД обработкой символа, который ЗАВЕРШАЕТ токен
     auto finalize_token = [&]() {
         // --- Начальные проверки ---
         if (current_token.empty()) { // Если токена нет, ничего не делаем
@@ -152,7 +150,7 @@ int main(int argc, char* argv[])
             }
 
             // --- Извлекаем и проверяем суффикс ---
-            std::string suffix = "";
+            std::string suffix; // Было: std::string suffix = "";
             bool has_u = false;
             int l_count = 0; // 0 = нет, 1 = l, 2 = ll
             bool suffix_is_valid = true; // Предполагаем валидность, если суффикса нет
@@ -298,8 +296,13 @@ int main(int argc, char* argv[])
         // 2. Проверка на завершение ВАЛИДНОГО токена разделителем
         // (Исключаем NUMBER_END_POTENTIAL_SUFFIX, т.к. там символ - буква)
         if (num_state != IDLE && num_state != NUMBER_END_POTENTIAL_SUFFIX && is_delimiter(c)) {
-            finalize_token(); // Завершаем валидный токен, выведет результат
-            // Разделитель игнорируется
+            // --- Исправление: если разделитель — точка, то это ошибка для целого числа ---
+            if (c == '.') {
+                current_token += c; // Добавляем точку к токену
+                num_state = INVALID; // Помечаем токен как ошибочный
+            }
+            finalize_token(); // Завершаем токен, выведет результат
+            // Разделитель сам по себе игнорируется
             continue; // Переходим к следующей итерации
         }
 
@@ -352,8 +355,8 @@ int main(int argc, char* argv[])
                 break;
 
             // ---> Обработка буквы после числа <---
+            case NUMBER_END_POTENTIAL_SUFFIX:
             // ---> Обработка буквы после числа <---
-        case NUMBER_END_POTENTIAL_SUFFIX:
             // 'potential_suffix_char' содержит букву, прочитанную на пред. шаге ('a')
                 // 'c' - это символ, идущий ПОСЛЕ этой буквы (например, разделитель)
             {
@@ -381,7 +384,6 @@ int main(int argc, char* argv[])
                 }
             }
             break; // Конец case NUMBER_END_POTENTIAL_SUFFIX
-                 break; // Конец case NUMBER_END_POTENTIAL_SUFFIX
 
             // ---> Обработка состояний суффикса <---
              case SUFFIX_U: // Прочитали ...u
